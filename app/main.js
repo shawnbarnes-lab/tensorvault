@@ -12,11 +12,57 @@ let backendProcess = null;
 let ollamaProcess = null;
 let isQuitting = false;
 
-// Models Ollama pulls on first launch. The LLM is the big one (~9.6 GB);
-// the embedding model is small (~670 MB for mxbai-embed-large).
-const OLLAMA_MODEL       = 'gemma4';
-const OLLAMA_EMBED_MODEL = 'mxbai-embed-large';
-const MODELS_TO_PULL     = [OLLAMA_MODEL, OLLAMA_EMBED_MODEL];
+// ─── GPU detection and model selection ────────────────────────────────────
+// We auto-detect VRAM and pick an LLM that fits alongside the embedder.
+// Power users can override with the OLLAMA_MODEL env var.
+//
+// Picks (with mxbai-embed-large always ~770 MB):
+//   >= 12 GB VRAM   -> gemma4      (~9.6 GB, full quality, ~10.4 GB total)
+//    6-12 GB VRAM   -> gemma3:4b   (~3.3 GB, very good, ~4.1 GB total)
+//   <  6 GB or none -> gemma3:1b   (~0.8 GB, basic, ~1.6 GB total)
+//
+// We always use mxbai-embed-large for embeddings -- small enough to fit
+// in any reasonable GPU and it's the quality sweet spot at 1024 dims.
+const OLLAMA_EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || 'mxbai-embed-large';
+
+function detectGpuVramGB() {
+  // Returns max VRAM (in GB) across any NVIDIA GPUs on the system.
+  // 0 means no NVIDIA GPU detected (or nvidia-smi unavailable).
+  try {
+    const { execFileSync } = require('child_process');
+    const out = execFileSync(
+      'nvidia-smi',
+      ['--query-gpu=memory.total', '--format=csv,noheader,nounits'],
+      { encoding: 'utf8', timeout: 5000, windowsHide: true }
+    );
+    const mibs = out.trim().split('\n')
+      .map(s => parseInt(s.trim(), 10))
+      .filter(n => !isNaN(n) && n > 0);
+    if (!mibs.length) return 0;
+    const maxMiB = Math.max(...mibs);
+    return Math.floor(maxMiB / 1024);  // nvidia-smi reports MiB
+  } catch (e) {
+    console.log('[gpu-detect] No NVIDIA GPU via nvidia-smi:', e.message);
+    return 0;
+  }
+}
+
+function selectLlmModel(vramGB) {
+  if (vramGB >= 12) return { name: 'gemma4',    label: 'Gemma 4 E4B',  sizeGB: 9.6, tier: 'high' };
+  if (vramGB >= 6)  return { name: 'gemma3:4b', label: 'Gemma 3 4B',   sizeGB: 3.3, tier: 'mid'  };
+  return                    { name: 'gemma3:1b', label: 'Gemma 3 1B',  sizeGB: 0.8, tier: 'low'  };
+}
+
+const DETECTED_VRAM_GB = detectGpuVramGB();
+// User override always wins. If they set OLLAMA_MODEL=something, we trust it.
+const LLM_OVERRIDE = (process.env.OLLAMA_MODEL || '').trim();
+const SELECTED_LLM = LLM_OVERRIDE
+  ? { name: LLM_OVERRIDE, label: LLM_OVERRIDE, sizeGB: 0, tier: 'override' }
+  : selectLlmModel(DETECTED_VRAM_GB);
+
+console.log(`[gpu-detect] VRAM detected: ${DETECTED_VRAM_GB} GB -> LLM: ${SELECTED_LLM.label} (${SELECTED_LLM.name})`);
+
+const OLLAMA_MODEL = SELECTED_LLM.name;
 
 // ─── Data directory (user docs only — no Wikipedia in TensorVault) ──────────
 function getUserDataDir() {
@@ -145,8 +191,25 @@ async function ensureOllamaModel() {
     return false;
   }
 
+  // Tell the user which LLM we picked and why, before we start pulling.
+  // This makes the VRAM-based selection visible instead of mysterious.
+  let selectionMsg;
+  if (LLM_OVERRIDE) {
+    selectionMsg = `Using ${SELECTED_LLM.label} (set by OLLAMA_MODEL).`;
+  } else if (DETECTED_VRAM_GB >= 12) {
+    selectionMsg = `Detected ${DETECTED_VRAM_GB} GB GPU — using ${SELECTED_LLM.label} for full quality.`;
+  } else if (DETECTED_VRAM_GB >= 6) {
+    selectionMsg = `Detected ${DETECTED_VRAM_GB} GB GPU — using ${SELECTED_LLM.label} to keep inference on GPU.`;
+  } else if (DETECTED_VRAM_GB > 0) {
+    selectionMsg = `Detected ${DETECTED_VRAM_GB} GB GPU — using ${SELECTED_LLM.label} (compact model for low-VRAM cards).`;
+  } else {
+    selectionMsg = `No NVIDIA GPU detected — using ${SELECTED_LLM.label} on CPU (slower but functional).`;
+  }
+  console.log(`[setup] ${selectionMsg}`);
+  mainWindow?.webContents.send('setup-status', selectionMsg);
+
   const targets = [
-    { name: OLLAMA_MODEL,       label: 'AI model' },
+    { name: OLLAMA_MODEL,       label: SELECTED_LLM.label },
     { name: OLLAMA_EMBED_MODEL, label: 'Embedding model' },
   ];
 
@@ -189,11 +252,16 @@ function startBackend() {
   const userDir = getUserDataDir();
   fs.mkdirSync(userDir, { recursive: true });
 
+  // Pass the auto-selected models to the Python backend so it queries
+  // Ollama for the right ones. Without this the backend would default
+  // to its own constants and could mismatch what main.js pulled.
   const env = {
     ...process.env,
     TENSORVAULT_USER_DIR: userDir,
     RAG_PORT: String(PORT),
     PYTHONUNBUFFERED: '1',
+    OLLAMA_MODEL:       OLLAMA_MODEL,
+    OLLAMA_EMBED_MODEL: OLLAMA_EMBED_MODEL,
   };
 
   if (isDev) {
