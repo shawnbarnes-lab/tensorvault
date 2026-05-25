@@ -24,8 +24,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: app/package-lock.json
 
       - name: Set up Miniconda
         uses: conda-incubator/setup-miniconda@v3
@@ -43,7 +41,7 @@ jobs:
           pip install pyinstaller --quiet
 
       - name: Install Node dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Freeze Python backend (PyInstaller)
         shell: bash -el {0}
