@@ -31,8 +31,9 @@ DiskSpanning=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
-; Install size: ~10 GB (app + bundled Gemma 3n E4B model + tools)
-ExtraDiskSpaceRequired=10737418240
+; Install size: ~1.5 GB (app + bundled Ollama binary).
+; The LLM (~9.6 GB) downloads to AppData on first launch.
+ExtraDiskSpaceRequired=1610612736
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 WizardStyle=modern

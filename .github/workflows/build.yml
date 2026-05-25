@@ -74,12 +74,16 @@ jobs:
             --exclude-module notebook \
             backend/service.py
 
-      - name: Prep Ollama bundle (download ollama + pull gemma3n:e4b)
+      - name: Bundle Ollama binary (no model — pulled on first launch)
         shell: pwsh
         working-directory: app
         run: |
+          # We bundle ollama.exe + its lib/ into the installer (~50 MB) but NOT
+          # the LLM weights. NSIS has a 2 GB single-file limit and a bundled
+          # multi-GB model blows past it. The app pulls the model on first
+          # launch via Ollama instead. Trade: installer 1.5 GB vs 10 GB; users
+          # wait ~5-10 min on first launch for the model download.
           New-Item -ItemType Directory -Force -Path ollama_bundle | Out-Null
-          New-Item -ItemType Directory -Force -Path ollama_bundle\models | Out-Null
           $ollamaVersion = "0.24.0"
           $ollamaZip = "ollama_bundle\ollama-windows-amd64.zip"
           $ollamaExe = "ollama_bundle\ollama.exe"
@@ -91,13 +95,6 @@ jobs:
           }
           Write-Host "Files in ollama_bundle:"
           Get-ChildItem ollama_bundle | Format-Table Name, Length
-          # Start ollama briefly so we can pull the model
-          $env:OLLAMA_MODELS = "$PWD\ollama_bundle\models"
-          Start-Process -FilePath ".\$ollamaExe" -ArgumentList "serve" -NoNewWindow
-          Start-Sleep -Seconds 8
-          & ".\$ollamaExe" pull gemma3n:e4b
-          # Stop ollama
-          Get-Process -Name ollama -ErrorAction SilentlyContinue | Stop-Process -Force
 
       - name: Build Electron installer
         working-directory: app

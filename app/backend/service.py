@@ -9,8 +9,8 @@ Target hardware: 4+ core CPU, 8 GB RAM (16 GB recommended), NVIDIA GPU
 with 4+ GB VRAM (optional - falls back to CPU), Windows 10/11.
 
 VRAM allocation (adaptive, auto-split by Ollama):
-  >6 GB VRAM:  full Gemma 3n E4B on GPU + Whisper
-  <=6 GB VRAM: partial Gemma 3n E4B on GPU, rest on CPU RAM
+  >6 GB VRAM:  full Gemma 4 E4B on GPU + Whisper
+  <=6 GB VRAM: partial Gemma 4 E4B on GPU, rest on CPU RAM
    0 GB VRAM:  fully on CPU RAM (slower but functional)
 
 RAM allocation (8 GB minimum):
@@ -90,9 +90,9 @@ RERANK_MODEL    = os.environ.get('RAG_RERANK_MODEL', 'cross-encoder/ms-marco-Min
 EMBED_DEVICE    = 'cpu'
 RERANK_DEVICE   = 'cpu'
 
-# Ollama (LLM) - Gemma 3n E4B by default (smaller, lower hardware bar)
+# Ollama (LLM) - Gemma 4 E4B by default (smaller, lower hardware bar)
 OLLAMA_HOST     = os.environ.get('OLLAMA_HOST',  'http://127.0.0.1:11434')
-OLLAMA_MODEL    = os.environ.get('OLLAMA_MODEL', 'gemma3n:e4b')
+OLLAMA_MODEL    = os.environ.get('OLLAMA_MODEL', 'gemma4')
 
 # Whisper STT - small model, GPU if available, ~500MB VRAM
 WHISPER_MODEL   = os.environ.get('WHISPER_MODEL',  'small')
@@ -193,7 +193,7 @@ def init():
     print()
     print('-' * 64)
     print(f'  VRAM budget:')
-    print(f'    Gemma 3n E4B (via Ollama) ..... auto-split GPU/CPU')
+    print(f'    Gemma 4 E4B (via Ollama) ..... auto-split GPU/CPU')
     print(f'    Whisper Small ................. ~0.5 GB  GPU')
     print(f'    Embedder + Reranker ........... 0.0 GB  (CPU)')
     print(f'  RAM budget:')

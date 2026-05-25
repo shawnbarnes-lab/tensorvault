@@ -28,7 +28,7 @@ TensorVault is an alternative for teams who want the practical value of a RAG-po
 
 - **Document indexing**: PDF, DOCX, TXT, MD, CSV, RTF. OCR for scanned PDFs.
 - **Semantic search** over your indexed documents using BGE-large embeddings (1024-dim) plus a MiniLM cross-encoder reranker.
-- **Grounded AI answers** powered by a local LLM (Gemma 3n E4B by default). Every claim cites the document and passage it came from.
+- **Grounded AI answers** powered by a local LLM (Gemma 4 E4B by default). Every claim cites the document and passage it came from.
 - **Color-coded responses** show which sentences came from your documents, which came from the model's general knowledge, and which had no source backing them.
 - **Voice input and output**: Whisper for speech-to-text, Piper for text-to-speech.
 - **PDF and DOCX export**: turn any AI answer into a polished, citation-ready report.
@@ -132,7 +132,7 @@ The signed installer release on GitHub is built and signed automatically via [Gi
 | Layer | Stack |
 | ----- | ----- |
 | UI | Electron 28 + custom HTML/CSS |
-| LLM | Gemma 3n E4B via Ollama |
+| LLM | Gemma 4 E4B via Ollama |
 | Embeddings | BAAI/bge-large-en-v1.5 (CPU) |
 | Reranker | cross-encoder/ms-marco-MiniLM-L-12-v2 (CPU) |
 | Vector store | FAISS (in-memory flat IP) |

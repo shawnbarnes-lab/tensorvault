@@ -2,10 +2,11 @@
 ; Included by electron-builder via package.json nsis.include
 
 !macro customInstall
-  ; Estimated install size for Add/Remove Programs.
-  ; Backend + Ollama + bundled Gemma 3n E4B model + tools ~= 10 GB
+  ; Estimated install size for Add/Remove Programs (in KB).
+  ; Backend + Electron + bundled Ollama binary ~= 1.5 GB. The LLM (~9.6 GB)
+  ; downloads on first launch into AppData, NOT into the install dir.
   WriteRegDWORD SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" \
-    "EstimatedSize" 10485760
+    "EstimatedSize" 1572864
 !macroend
 
 !macro customUnInstall
