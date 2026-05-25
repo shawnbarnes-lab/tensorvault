@@ -12,7 +12,7 @@ let backendProcess = null;
 let ollamaProcess = null;
 let isQuitting = false;
 
-// LLM model — small Gemma 4 variant, ~3 GB, runs on 4 GB VRAM or CPU.
+// LLM model — Gemma 4 E4B, ~9.6 GB. Pulled by Ollama on first launch.
 const OLLAMA_MODEL = 'gemma4';
 
 // ─── Data directory (user docs only — no Wikipedia in TensorVault) ──────────
