@@ -31,8 +31,8 @@ DiskSpanning=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
-; Install size: ~6 GB (app + bundled Gemma 3n E2B model + tools)
-ExtraDiskSpaceRequired=6442450944
+; Install size: ~10 GB (app + bundled Gemma 3n E4B model + tools)
+ExtraDiskSpaceRequired=10737418240
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 WizardStyle=modern

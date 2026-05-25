@@ -76,7 +76,7 @@ jobs:
             --exclude-module notebook \
             backend/service.py
 
-      - name: Prep Ollama bundle (download ollama.exe + pull gemma3n:e2b)
+      - name: Prep Ollama bundle (download ollama.exe + pull gemma3n:e4b)
         shell: pwsh
         working-directory: app
         run: |
@@ -91,7 +91,7 @@ jobs:
           $env:OLLAMA_MODELS = "$PWD\ollama_bundle\models"
           Start-Process -FilePath $ollamaExe -ArgumentList "serve" -NoNewWindow
           Start-Sleep -Seconds 5
-          & $ollamaExe pull gemma3n:e2b
+          & $ollamaExe pull gemma3n:e4b
           # Stop ollama
           Get-Process -Name ollama -ErrorAction SilentlyContinue | Stop-Process -Force
 
@@ -157,7 +157,7 @@ jobs:
             answers as PDF or DOCX. Runs entirely on your own machine.
 
             ### What's bundled
-            - Local LLM: Gemma 3n E2B (~3 GB) via Ollama
+            - Local LLM: Gemma 3n E4B (~7.5 GB) via Ollama
             - BGE-large embeddings + MiniLM cross-encoder reranker
             - Whisper STT, Piper TTS, Tesseract OCR, Poppler
 
@@ -165,7 +165,7 @@ jobs:
             - Windows 10/11 64-bit
             - 8 GB RAM (16 GB recommended)
             - NVIDIA GPU with 4+ GB VRAM (optional - falls back to CPU)
-            - ~6 GB free disk space
+            - ~10 GB free disk space
 
             ### Installation
             1. Download `TensorVault-Setup-${{ github.ref_name }}.exe`

@@ -13,7 +13,7 @@ let ollamaProcess = null;
 let isQuitting = false;
 
 // LLM model — small Gemma 3n variant, ~3 GB, runs on 4 GB VRAM or CPU.
-const OLLAMA_MODEL = 'gemma3n:e2b';
+const OLLAMA_MODEL = 'gemma3n:e4b';
 
 // ─── Data directory (user docs only — no Wikipedia in TensorVault) ──────────
 function getUserDataDir() {

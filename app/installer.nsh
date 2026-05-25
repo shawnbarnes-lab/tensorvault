@@ -3,9 +3,9 @@
 
 !macro customInstall
   ; Estimated install size for Add/Remove Programs.
-  ; Backend + Ollama + bundled Gemma 3n E2B model + tools ~= 6 GB
+  ; Backend + Ollama + bundled Gemma 3n E4B model + tools ~= 10 GB
   WriteRegDWORD SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" \
-    "EstimatedSize" 6291456
+    "EstimatedSize" 10485760
 !macroend
 
 !macro customUnInstall

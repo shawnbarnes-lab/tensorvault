@@ -1,18 +1,18 @@
 @echo off
 REM -- Prep Ollama bundle for TensorVault build -----------------------------
-REM Downloads ollama.exe and copies the gemma3n:e2b model into ollama_bundle/
+REM Downloads ollama.exe and copies the gemma3n:e4b model into ollama_bundle/
 REM so electron-builder can include them in the installer.
 REM
 REM Run BEFORE: build.bat
 REM This script will:
 REM   1. Download ollama.exe (if missing)
-REM   2. Pull gemma3n:e2b via the system Ollama (or bundled one)
+REM   2. Pull gemma3n:e4b via the system Ollama (or bundled one)
 REM   3. Copy the model files into ollama_bundle\models\
 
 setlocal
 set BUNDLE_DIR=%~dp0..\ollama_bundle
 set OLLAMA_VERSION=0.6.2
-set MODEL_NAME=gemma3n:e2b
+set MODEL_NAME=gemma3n:e4b
 
 echo.
 echo ===============================================================
