@@ -74,22 +74,28 @@ jobs:
             --exclude-module notebook \
             backend/service.py
 
-      - name: Prep Ollama bundle (download ollama.exe + pull gemma3n:e4b)
+      - name: Prep Ollama bundle (download ollama + pull gemma3n:e4b)
         shell: pwsh
         working-directory: app
         run: |
           New-Item -ItemType Directory -Force -Path ollama_bundle | Out-Null
           New-Item -ItemType Directory -Force -Path ollama_bundle\models | Out-Null
-          $ollamaVersion = "0.6.2"
+          $ollamaVersion = "0.24.0"
+          $ollamaZip = "ollama_bundle\ollama-windows-amd64.zip"
           $ollamaExe = "ollama_bundle\ollama.exe"
           if (-not (Test-Path $ollamaExe)) {
-            Invoke-WebRequest -Uri "https://github.com/ollama/ollama/releases/download/v$ollamaVersion/ollama-windows-amd64.exe" -OutFile $ollamaExe
+            Write-Host "Downloading Ollama v$ollamaVersion ..."
+            Invoke-WebRequest -Uri "https://github.com/ollama/ollama/releases/download/v$ollamaVersion/ollama-windows-amd64.zip" -OutFile $ollamaZip
+            Expand-Archive -Path $ollamaZip -DestinationPath ollama_bundle -Force
+            Remove-Item $ollamaZip
           }
+          Write-Host "Files in ollama_bundle:"
+          Get-ChildItem ollama_bundle | Format-Table Name, Length
           # Start ollama briefly so we can pull the model
           $env:OLLAMA_MODELS = "$PWD\ollama_bundle\models"
-          Start-Process -FilePath $ollamaExe -ArgumentList "serve" -NoNewWindow
-          Start-Sleep -Seconds 5
-          & $ollamaExe pull gemma3n:e4b
+          Start-Process -FilePath ".\$ollamaExe" -ArgumentList "serve" -NoNewWindow
+          Start-Sleep -Seconds 8
+          & ".\$ollamaExe" pull gemma3n:e4b
           # Stop ollama
           Get-Process -Name ollama -ErrorAction SilentlyContinue | Stop-Process -Force
 

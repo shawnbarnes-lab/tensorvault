@@ -11,7 +11,7 @@ REM   3. Copy the model files into ollama_bundle\models\
 
 setlocal
 set BUNDLE_DIR=%~dp0..\ollama_bundle
-set OLLAMA_VERSION=0.6.2
+set OLLAMA_VERSION=0.24.0
 set MODEL_NAME=gemma3n:e4b
 
 echo.
@@ -25,14 +25,20 @@ if not exist "%BUNDLE_DIR%" mkdir "%BUNDLE_DIR%"
 if not exist "%BUNDLE_DIR%\models" mkdir "%BUNDLE_DIR%\models"
 
 REM -- Step 2: Download Ollama for Windows ----------------------------------
-echo [1/3] Downloading ollama.exe (v%OLLAMA_VERSION%)...
+echo [1/3] Downloading Ollama v%OLLAMA_VERSION% (zip)...
 if not exist "%BUNDLE_DIR%\ollama.exe" (
-    curl -L -o "%BUNDLE_DIR%\ollama.exe" "https://github.com/ollama/ollama/releases/download/v%OLLAMA_VERSION%/ollama-windows-amd64.exe"
+    curl -L -o "%BUNDLE_DIR%\ollama.zip" "https://github.com/ollama/ollama/releases/download/v%OLLAMA_VERSION%/ollama-windows-amd64.zip"
     if errorlevel 1 (
-        echo ERROR: Failed to download ollama.exe
+        echo ERROR: Failed to download ollama zip
         exit /b 1
     )
-    echo       [OK] Downloaded ollama.exe
+    powershell -Command "Expand-Archive -Path '%BUNDLE_DIR%\ollama.zip' -DestinationPath '%BUNDLE_DIR%' -Force"
+    if errorlevel 1 (
+        echo ERROR: Failed to extract ollama zip
+        exit /b 1
+    )
+    del "%BUNDLE_DIR%\ollama.zip"
+    echo       [OK] Downloaded and extracted ollama.exe
 ) else (
     echo       [OK] ollama.exe already exists
 )
