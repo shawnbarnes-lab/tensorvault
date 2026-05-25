@@ -238,16 +238,30 @@ function startOllama() {
   });
 }
 
+function killProcessTree(proc, label) {
+  // On Windows, Node's proc.kill() sends a signal only to the parent.
+  // Ollama spawns model-runner child processes that can linger and keep
+  // VRAM allocated. taskkill /F /T terminates the whole tree.
+  if (!proc) return;
+  try {
+    if (process.platform === 'win32') {
+      const { execFileSync } = require('child_process');
+      execFileSync('taskkill', ['/F', '/T', '/PID', String(proc.pid)],
+        { stdio: 'ignore', windowsHide: true });
+    } else {
+      proc.kill('SIGTERM');
+    }
+  } catch (e) {
+    console.warn(`[${label}] kill failed:`, e.message);
+  }
+}
+
 function stopBackend() {
   isQuitting = true;
-  if (backendProcess) {
-    backendProcess.kill();
-    backendProcess = null;
-  }
-  if (ollamaProcess) {
-    ollamaProcess.kill();
-    ollamaProcess = null;
-  }
+  killProcessTree(backendProcess, 'backend');
+  backendProcess = null;
+  killProcessTree(ollamaProcess, 'ollama');
+  ollamaProcess = null;
 }
 
 function waitForBackend(retries = 60, delayMs = 2000) {
