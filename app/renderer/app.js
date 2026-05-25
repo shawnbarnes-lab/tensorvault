@@ -62,8 +62,15 @@ const setupDetail     = $('setup-detail');
   });
 
   window.tensorvault.onSetupProgress((data) => {
-    if (setupProgressBar) setupProgressBar.style.width = data.pct + '%';
-    if (setupDetail) setupDetail.textContent = `${data.file}: ${data.dlMB} MB / ${data.totalMB} MB (${data.pct}%)`;
+    if (setupProgressBar) setupProgressBar.style.width = (data.pct || 0) + '%';
+    // Support both the new (downloaded/total) format and the legacy (dlMB/totalMB).
+    const dl = data.downloaded || (data.dlMB ? data.dlMB + ' MB' : '');
+    const tot = data.total      || (data.totalMB ? data.totalMB + ' MB' : '');
+    if (setupDetail) {
+      setupDetail.textContent = dl && tot
+        ? `${data.file || 'AI model'}: ${dl} / ${tot} (${data.pct || 0}%)`
+        : `${data.file || 'AI model'}: ${data.pct || 0}%`;
+    }
   });
 
   window.tensorvault.onSetupError((msg) => {

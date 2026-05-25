@@ -14,12 +14,13 @@ const api = {
   onBackendError:  (cb) => ipcRenderer.on('backend-error', (_e, msg) => cb(msg)),
   onSetupStatus:   (cb) => ipcRenderer.on('setup-status', (_e, msg) => cb(msg)),
 
-  // Backwards-compatible stubs (TensorVault has no Wikipedia data dir to
-  // download, so these resolve as if everything is already ready).
+  // Setup progress (driven by Ollama HTTP API pull events in main.js).
+  onSetupProgress:   (cb) => ipcRenderer.on('setup-progress', (_e, data) => cb(data)),
+
+  // Backwards-compatible stubs (no Wikipedia data dir in TensorVault).
   getDataDir:        () => ipcRenderer.invoke('get-user-dir'),
   openDataFolder:    () => ipcRenderer.invoke('open-user-folder'),
   checkDataReady:    async () => true,
-  onSetupProgress:   (_cb) => { /* no-op: nothing to download */ },
   onSetupError:      (_cb) => { /* no-op: setup errors flow through setup-status */ },
 };
 

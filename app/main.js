@@ -20,34 +20,124 @@ function getUserDataDir() {
   return path.join(app.getPath('userData'), 'user_docs');
 }
 
-// ─── Ollama model setup ─────────────────────────────────────────────────────
-async function ensureOllamaModel() {
-  const ollamaExe = getOllamaExe();
-  if (!ollamaExe) return false;
+// ─── Ollama model setup (uses HTTP API for clean JSON progress events) ─────
+function fmtBytes(n) {
+  if (!n || n <= 0) return '0 B';
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + ' GB';
+  if (n >= 1e6) return (n / 1e6).toFixed(0) + ' MB';
+  if (n >= 1e3) return (n / 1e3).toFixed(0) + ' KB';
+  return n + ' B';
+}
 
-  // Check if model is already pulled
-  try {
-    const result = await new Promise((resolve, reject) => {
-      execFile(ollamaExe, ['list'], { env: getOllamaEnv() }, (err, stdout) => {
-        if (err) return reject(err);
-        resolve(stdout);
+// Wait briefly until Ollama's HTTP API is reachable (server may still be
+// starting up when we get here).
+async function waitForOllamaHttp(retries = 20, delayMs = 500) {
+  for (let i = 0; i < retries; i++) {
+    const ok = await new Promise((resolve) => {
+      const req = http.get('http://127.0.0.1:11434/api/tags', { timeout: 1500 }, (res) => {
+        res.on('data', () => {});
+        res.on('end', () => resolve(res.statusCode === 200));
       });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => { req.destroy(); resolve(false); });
     });
-    if (result.includes(OLLAMA_MODEL.split(':')[0])) return true;
-  } catch (e) { /* ollama not running yet, will pull after start */ }
+    if (ok) return true;
+    await new Promise(r => setTimeout(r, delayMs));
+  }
+  return false;
+}
 
-  mainWindow?.webContents.send('setup-status', `Downloading AI model (${OLLAMA_MODEL})... This may take a few minutes.`);
+async function ensureOllamaModel() {
+  if (!await waitForOllamaHttp()) {
+    console.error('[ollama] HTTP API never came up — skipping model check');
+    return false;
+  }
+
+  // Is the model already present?
+  try {
+    const tagsBody = await new Promise((resolve, reject) => {
+      const req = http.get('http://127.0.0.1:11434/api/tags', { timeout: 5000 }, (res) => {
+        let body = '';
+        res.on('data', c => body += c);
+        res.on('end', () => resolve(body));
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    });
+    const tags = JSON.parse(tagsBody);
+    const base = OLLAMA_MODEL.split(':')[0];
+    if (Array.isArray(tags.models) && tags.models.some(m => (m.name || '').includes(base))) {
+      mainWindow?.webContents.send('setup-status', 'AI model ready.');
+      return true;
+    }
+  } catch (e) { /* fall through to pull */ }
+
+  // Pull via HTTP API. Each line of the response body is a JSON event with
+  // {status, digest, total, completed} fields — perfect for driving a clean
+  // progress bar without the ANSI escape soup the CLI emits.
+  mainWindow?.webContents.send('setup-status', `Downloading AI model (${OLLAMA_MODEL}).`);
+
   return new Promise((resolve) => {
-    const pull = spawn(ollamaExe, ['pull', OLLAMA_MODEL], { env: getOllamaEnv() });
-    pull.stdout.on('data', d => {
-      const line = d.toString().trim();
-      mainWindow?.webContents.send('setup-status', `Pulling ${OLLAMA_MODEL}: ${line}`);
+    const payload = JSON.stringify({ name: OLLAMA_MODEL });
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port: 11434,
+      path: '/api/pull',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+      },
+    }, (res) => {
+      let buffer = '';
+      let lastPct = -1;
+      res.on('data', (chunk) => {
+        buffer += chunk.toString('utf8');
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // keep partial last line
+        for (const raw of lines) {
+          const line = raw.trim();
+          if (!line) continue;
+          let ev;
+          try { ev = JSON.parse(line); } catch { continue; }
+          const status = (ev.status || '').toLowerCase();
+          const total = ev.total || 0;
+          const done = ev.completed || 0;
+
+          if (status.startsWith('pulling') && total > 0) {
+            const pct = Math.min(100, Math.max(0, Math.round((done / total) * 100)));
+            if (pct !== lastPct) {
+              lastPct = pct;
+              mainWindow?.webContents.send('setup-status', `Downloading AI model (${fmtBytes(done)} / ${fmtBytes(total)})`);
+              mainWindow?.webContents.send('setup-progress', {
+                file:       'AI model',
+                pct,
+                downloaded: fmtBytes(done),
+                total:      fmtBytes(total),
+              });
+            }
+          } else if (status.includes('verifying')) {
+            mainWindow?.webContents.send('setup-status', 'Verifying download…');
+          } else if (status.includes('manifest')) {
+            mainWindow?.webContents.send('setup-status', 'Preparing model…');
+          } else if (status === 'success') {
+            mainWindow?.webContents.send('setup-progress', {
+              file: 'AI model', pct: 100,
+              downloaded: fmtBytes(done || 1), total: fmtBytes(total || 1),
+            });
+            mainWindow?.webContents.send('setup-status', 'AI model ready.');
+          }
+        }
+      });
+      res.on('end', () => resolve(true));
+      res.on('error', () => resolve(false));
     });
-    pull.stderr.on('data', d => {
-      const line = d.toString().trim();
-      mainWindow?.webContents.send('setup-status', `Pulling ${OLLAMA_MODEL}: ${line}`);
+    req.on('error', (err) => {
+      console.error('[ollama] pull request error:', err.message);
+      resolve(false);
     });
-    pull.on('exit', (code) => resolve(code === 0));
+    req.write(payload);
+    req.end();
   });
 }
 
