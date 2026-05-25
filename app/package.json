@@ -49,21 +49,6 @@
         "from": "ollama_bundle/models/",
         "to": "backend/ollama_models/",
         "filter": ["**/*"]
-      },
-      {
-        "from": "tesseract_bundle/",
-        "to": "backend/tesseract/",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "poppler_bundle/",
-        "to": "backend/poppler/",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "piper_bundle/",
-        "to": "backend/piper/",
-        "filter": ["**/*"]
       }
     ],
     "win": {
