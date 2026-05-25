@@ -1,0 +1,53 @@
+# Node
+app/node_modules/
+app/dist/
+app/backend_dist/
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.spec
+
+# Ollama bundle (large model files, built by prep_ollama_bundle.bat)
+app/ollama_bundle/
+
+# Bundled third-party tools (download separately for builds)
+app/tesseract_bundle/
+app/poppler_bundle/
+app/piper_bundle/
+
+# Build output
+*.exe
+*.AppImage
+*.deb
+*.dmg
+build/
+dist/
+out/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Env / secrets — NEVER commit these
+.env
+*.env
+*.pem
+*.key
+*token*
+*secret*
+
+# Dev notes
+*.todo
+NOTES.md

@@ -1,0 +1,96 @@
+{
+  "name": "tensorvault",
+  "version": "0.1.0",
+  "description": "TensorVault — private business knowledge assistant. Your documents indexed locally, answered by a local LLM, exported as PDF or DOCX. No cloud.",
+  "main": "main.js",
+  "author": "TensorSpace LLC",
+  "license": "MIT",
+  "homepage": "https://tensorspace.net",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shawnbarnes-lab/tensorvault.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dist": "electron-builder --win --x64",
+    "dist:dir": "electron-builder --win --dir"
+  },
+  "build": {
+    "appId": "net.tensorspace.tensorvault",
+    "productName": "TensorVault",
+    "copyright": "Copyright (c) 2026 TensorSpace LLC. Released under MIT.",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "scripts/**/*",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend_dist/",
+        "to": "backend/",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "ollama_bundle/ollama.exe",
+        "to": "backend/ollama/ollama.exe"
+      },
+      {
+        "from": "ollama_bundle/lib/",
+        "to": "backend/ollama/lib/",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "ollama_bundle/models/",
+        "to": "backend/ollama_models/",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "tesseract_bundle/",
+        "to": "backend/tesseract/",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "poppler_bundle/",
+        "to": "backend/poppler/",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "piper_bundle/",
+        "to": "backend/piper/",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false,
+      "forceCodeSigning": false,
+      "sign": "./sign.js"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TensorVault",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "license": "assets/LICENSE.txt",
+      "include": "installer.nsh"
+    }
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  }
+}

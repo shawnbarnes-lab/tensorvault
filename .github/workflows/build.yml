@@ -1,0 +1,163 @@
+name: Build and Release TensorVault
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  id-token: write   # Required for Azure OIDC signing
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: app/package-lock.json
+
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: '3.10'
+          environment-file: app/backend/environment.yml
+          activate-environment: rag
+          auto-activate-base: false
+
+      - name: Install Python build tools
+        shell: bash -el {0}
+        working-directory: app
+        run: |
+          conda activate rag
+          pip install pyinstaller --quiet
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Freeze Python backend (PyInstaller)
+        shell: bash -el {0}
+        working-directory: app
+        run: |
+          conda activate rag
+          pyinstaller \
+            --onefile --console \
+            --name service \
+            --distpath backend_dist \
+            --workpath build/pyinstaller \
+            --specpath build \
+            --hidden-import flask \
+            --hidden-import flask_cors \
+            --hidden-import faiss \
+            --hidden-import sentence_transformers \
+            --hidden-import sentence_transformers.cross_encoder \
+            --hidden-import transformers \
+            --hidden-import sklearn \
+            --hidden-import sklearn.metrics.pairwise \
+            --hidden-import pdfplumber \
+            --hidden-import docx \
+            --hidden-import fpdf \
+            --hidden-import pytesseract \
+            --hidden-import pdf2image \
+            --hidden-import fitz \
+            --hidden-import faster_whisper \
+            --hidden-import ctranslate2 \
+            --exclude-module matplotlib \
+            --exclude-module notebook \
+            backend/service.py
+
+      - name: Prep Ollama bundle (download ollama.exe + pull gemma3n:e2b)
+        shell: pwsh
+        working-directory: app
+        run: |
+          New-Item -ItemType Directory -Force -Path ollama_bundle | Out-Null
+          New-Item -ItemType Directory -Force -Path ollama_bundle\models | Out-Null
+          $ollamaVersion = "0.6.2"
+          $ollamaExe = "ollama_bundle\ollama.exe"
+          if (-not (Test-Path $ollamaExe)) {
+            Invoke-WebRequest -Uri "https://github.com/ollama/ollama/releases/download/v$ollamaVersion/ollama-windows-amd64.exe" -OutFile $ollamaExe
+          }
+          # Start ollama briefly so we can pull the model
+          $env:OLLAMA_MODELS = "$PWD\ollama_bundle\models"
+          Start-Process -FilePath $ollamaExe -ArgumentList "serve" -NoNewWindow
+          Start-Sleep -Seconds 5
+          & $ollamaExe pull gemma3n:e2b
+          # Stop ollama
+          Get-Process -Name ollama -ErrorAction SilentlyContinue | Stop-Process -Force
+
+      - name: Build Electron installer
+        working-directory: app
+        run: npm run dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Azure Trusted Signing is OPTIONAL. If the secrets below are configured
+      # in the repo settings, the installer gets EV-class signing automatically.
+      # Without them, the installer ships unsigned (SmartScreen will prompt).
+      - name: Azure login (OIDC)
+        if: ${{ secrets.AZURE_CLIENT_ID != '' }}
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign installer (Azure Trusted Signing)
+        if: ${{ secrets.AZURE_CLIENT_ID != '' }}
+        shell: pwsh
+        working-directory: app
+        run: |
+          $installer = Get-ChildItem dist\TensorVault-Setup-*.exe | Select-Object -First 1
+          Write-Host "Signing: $($installer.FullName)"
+          az trustedsigning sign `
+            --endpoint "${{ secrets.AZURE_ENDPOINT }}" `
+            --account "${{ secrets.AZURE_ACCOUNT }}" `
+            --certificate-profile "${{ secrets.AZURE_CERT_PROFILE }}" `
+            --files "$($installer.FullName)" `
+            --file-digest SHA256 `
+            --timestamp-rfc3161 http://timestamp.acs.microsoft.com `
+            --timestamp-digest SHA256
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: app/dist/TensorVault-Setup-*.exe
+          body: |
+            ## TensorVault ${{ github.ref_name }}
+
+            Private business knowledge assistant. Index your documents into a
+            local vector store, ask questions answered by a local LLM, export
+            answers as PDF or DOCX. Runs entirely on your own machine.
+
+            ### What's bundled
+            - Local LLM: Gemma 3n E2B (~3 GB) via Ollama
+            - BGE-large embeddings + MiniLM cross-encoder reranker
+            - Whisper STT, Piper TTS, Tesseract OCR, Poppler
+
+            ### System Requirements
+            - Windows 10/11 64-bit
+            - 8 GB RAM (16 GB recommended)
+            - NVIDIA GPU with 4+ GB VRAM (optional - falls back to CPU)
+            - ~6 GB free disk space
+
+            ### Installation
+            1. Download `TensorVault-Setup-${{ github.ref_name }}.exe`
+            2. Run the installer (one click, everything bundled)
+            3. Launch TensorVault from the Start Menu
+            4. Add your documents in the "My Docs" tab
+
+            Released under the MIT license by TensorSpace LLC.
+            Website: https://tensorspace.net
+          draft: false
+          prerelease: false

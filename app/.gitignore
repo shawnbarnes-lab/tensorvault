@@ -1,0 +1,42 @@
+node_modules/
+dist/
+build/
+backend_dist/
+ollama_bundle/
+tesseract_bundle/
+poppler_bundle/
+piper_bundle/
+
+# Large model files — distributed via Ollama / HuggingFace at runtime
+*.faiss
+*.pkl
+*.bin
+*.pt
+*.pth
+
+# Model cache
+.cache/
+huggingface/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+*.spec.bak
+
+# Signing certificates and secrets — NEVER commit these
+*.pfx
+*.p12
+*.key
+*.cer
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Electron builder cache
+.electron-builder-cache/

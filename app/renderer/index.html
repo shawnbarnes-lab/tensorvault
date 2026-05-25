@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:*;" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TensorVault</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- First-run setup overlay (model pull, backend start) -->
+  <div id="setup-overlay" style="display:none;">
+    <div class="setup-box">
+      <div class="logo-icon" style="font-size:3rem;margin-bottom:1rem;">T</div>
+      <h2>Setting up TensorVault</h2>
+      <p id="setup-message">Starting AI engine...</p>
+      <div class="progress-bar-wrap" style="margin:1.5rem 0;">
+        <div class="progress-bar" id="setup-progress-bar" style="width:0%"></div>
+      </div>
+      <p id="setup-detail" class="welcome-sub"></p>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="logo">
+      <div class="logo-icon">T</div>
+      <div class="logo-text">
+        <span class="logo-main">TensorVault</span>
+        <span class="logo-sub">PRIVATE AI</span>
+      </div>
+    </div>
+
+    <div class="nav-links">
+      <button class="nav-btn active" data-tab="search" title="Ask your documents">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span>Ask</span>
+      </button>
+      <button class="nav-btn" data-tab="docs" title="My Documents">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+        <span>My Docs</span>
+      </button>
+      <button class="nav-btn" data-tab="settings" title="Settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Settings</span>
+      </button>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="backend-dot" id="backend-dot" title="Backend status"></div>
+      <span id="sidebar-status">Connecting…</span>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="content">
+
+    <!-- ASK TAB -->
+    <section class="tab active" id="tab-search">
+      <div class="search-header">
+        <div class="search-bar">
+          <button class="voice-btn" id="voice-btn" title="Hold to speak">
+            <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </button>
+          <input id="query-input" type="text" placeholder="Ask your documents…" autocomplete="off" spellcheck="false" />
+          <select id="k-select" title="Number of results">
+            <option value="3">3</option>
+            <option value="5" selected>5</option>
+            <option value="10">10</option>
+            <option value="20">20</option>
+          </select>
+          <button class="search-btn" id="search-btn">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+        </div>
+        <div class="export-bar" id="export-bar" style="display:none;">
+          <button class="small-btn" id="export-pdf-btn">Export as PDF</button>
+          <button class="small-btn" id="export-docx-btn">Export as DOCX</button>
+        </div>
+        <div class="listening-bar" id="listening-bar">
+          <div class="pulse-ring"></div>
+          <span id="listening-label">Listening…</span>
+          <button id="stop-voice-btn">Stop</button>
+        </div>
+      </div>
+
+      <div class="results-area" id="results-area">
+        <div class="welcome">
+          <div class="welcome-icon">🔒</div>
+          <h2>Private AI grounded in your documents</h2>
+          <p>Add documents in <strong>My Docs</strong>, then ask anything.</p>
+          <p class="welcome-sub">Everything stays on this computer. No cloud, no API keys.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- DOCS TAB -->
+    <section class="tab" id="tab-docs">
+      <div class="docs-header">
+        <h2>My Documents</h2>
+        <p>Drop business documents here. TensorVault will index them locally so you can ask questions across all of them.</p>
+      </div>
+
+      <div class="upload-zone" id="upload-zone">
+        <div class="upload-icon">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <p><strong>Drop files here</strong> or <button class="link-btn" id="browse-btn">browse</button></p>
+        <p class="upload-sub">PDF · TXT · DOCX · MD · CSV · RTF (scanned PDFs supported via OCR)</p>
+      </div>
+
+      <div class="ingest-progress" id="ingest-progress" style="display:none;">
+        <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+        <span id="progress-label">Processing…</span>
+      </div>
+
+      <div class="doc-list-header" id="doc-list-header" style="display:none;">
+        <span id="doc-count-label">0 documents</span>
+        <button class="danger-btn" id="clear-docs-btn">Clear all</button>
+      </div>
+      <div class="doc-list" id="doc-list"></div>
+    </section>
+
+    <!-- SETTINGS TAB -->
+    <section class="tab" id="tab-settings">
+      <div class="settings-wrap">
+        <h2>Settings</h2>
+
+        <div class="settings-group">
+          <h3>Storage</h3>
+          <div class="setting-row">
+            <label>Document directory</label>
+            <div class="setting-val" id="data-dir-val">—</div>
+            <button class="small-btn" id="open-data-btn">Open folder</button>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h3>Voice</h3>
+          <div class="setting-row">
+            <label>Auto-read top result</label>
+            <input type="checkbox" id="auto-read-toggle" />
+          </div>
+          <div class="setting-row">
+            <label>Voice</label>
+            <select id="voice-select"></select>
+          </div>
+          <div class="setting-row">
+            <label>Speed</label>
+            <input type="range" id="voice-rate" min="0.5" max="2" step="0.1" value="0.95" />
+            <span id="voice-rate-label">0.95×</span>
+          </div>
+          <button class="small-btn" id="test-voice-btn">Test voice</button>
+        </div>
+
+        <div class="settings-group">
+          <h3>About</h3>
+          <div class="setting-row">
+            <label>Version</label>
+            <div class="setting-val" id="app-version">—</div>
+          </div>
+          <div class="setting-row">
+            <label>Backend</label>
+            <div class="setting-val" id="backend-url-val">—</div>
+          </div>
+          <p class="about-text">
+            TensorVault is a private business knowledge assistant by TensorSpace LLC.
+            Your documents stay on this computer. Released under the MIT license.
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Status bar -->
+  <footer class="statusbar">
+    <span id="status-backend" class="status-chip">● Connecting</span>
+    <span id="status-docs" class="status-chip">My Docs: —</span>
+    <span class="status-spacer"></span>
+    <span id="status-voice" class="status-chip">Voice: —</span>
+    <span id="status-time" class="status-chip"></span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
