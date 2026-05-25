@@ -229,19 +229,16 @@ def _save_user_index():
 
 
 # -- Embedding (via Ollama) ---------------------------------------------------
-def embed(texts: List[str]) -> np.ndarray:
-    """Embed texts via Ollama's /api/embeddings endpoint.
+class EmbedError(RuntimeError):
+    """Raised when Ollama's embedding endpoint fails after retries."""
 
-    Ollama runs the embedding model on whichever device it detected (GPU if
-    available, CPU otherwise). No PyTorch dependency.
-    """
-    global embed_dim
-    if not texts:
-        return np.zeros((0, embed_dim or 1), dtype='float32')
-    vecs = []
-    for text in texts:
-        # /api/embeddings is a single-string endpoint; we loop. For larger
-        # corpora the newer /api/embed accepts batches and is faster.
+
+def _embed_one(text: str, attempts: int = 3) -> List[float]:
+    """Embed a single string. Retries with backoff for the first-call lag
+    that happens when Ollama is loading the embedding model into VRAM."""
+    last_err = None
+    delay = 1.0
+    for i in range(attempts):
         try:
             r = http_requests.post(
                 f'{OLLAMA_HOST}/api/embeddings',
@@ -250,12 +247,34 @@ def embed(texts: List[str]) -> np.ndarray:
             )
             r.raise_for_status()
             v = r.json().get('embedding') or []
+            if v:
+                return v
+            last_err = 'empty embedding returned'
         except Exception as e:
-            print(f'[embed] error: {e}')
-            v = []
-        vecs.append(v)
-    if not vecs or not vecs[0]:
+            last_err = str(e)
+        if i < attempts - 1:
+            time.sleep(delay)
+            delay *= 2  # 1s, 2s, 4s
+    raise EmbedError(f'Ollama embedding failed after {attempts} tries: {last_err}')
+
+
+def embed(texts: List[str]) -> np.ndarray:
+    """Embed texts via Ollama's /api/embeddings endpoint.
+
+    Ollama runs the embedding model on whichever device it detected (GPU if
+    available, CPU otherwise). No PyTorch dependency.
+
+    Raises EmbedError if Ollama is unreachable or returns no embedding so
+    the caller can surface a real failure to the user instead of silently
+    indexing zero-dim garbage.
+    """
+    global embed_dim
+    if not texts:
         return np.zeros((0, embed_dim or 1), dtype='float32')
+    vecs = []
+    for text in texts:
+        v = _embed_one(text)   # raises on persistent failure
+        vecs.append(v)
     arr = np.array(vecs, dtype='float32')
     # L2-normalize so we can use FAISS inner-product as cosine similarity.
     norms = np.linalg.norm(arr, axis=1, keepdims=True)
