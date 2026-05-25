@@ -122,11 +122,15 @@ if getattr(sys, 'frozen', False):
     if _poppler_dir.exists():
         os.environ['PATH'] = str(_poppler_dir) + os.pathsep + os.environ['PATH']
 
-# RAG config
+# RAG config. CHUNK_SIZE is in words; mxbai-embed-large has a 512-token
+# context, so we keep chunks well under that (250 words ~= 330 tokens).
 RAG_CTX_CHUNKS  = int(os.environ.get('RAG_CTX_CHUNKS', '5'))
 RAG_CTX_CHARS   = int(os.environ.get('RAG_CTX_CHARS',  '900'))
-CHUNK_SIZE      = 400
-CHUNK_OVERLAP   = 50
+CHUNK_SIZE      = 250
+CHUNK_OVERLAP   = 30
+# Defensive hard cap on embedding input (chars). Safety belt in case any
+# chunk somehow slips past CHUNK_SIZE (e.g. a single long unsplit word).
+EMBED_INPUT_CHAR_CAP = 1800
 
 # -- Globals ------------------------------------------------------------------
 # Embedding dimension is discovered from the first embedding call (different
@@ -235,7 +239,14 @@ class EmbedError(RuntimeError):
 
 def _embed_one(text: str, attempts: int = 3) -> List[float]:
     """Embed a single string. Retries with backoff for the first-call lag
-    that happens when Ollama is loading the embedding model into VRAM."""
+    that happens when Ollama is loading the embedding model into VRAM.
+
+    Defensive char-cap: mxbai-embed-large has a 512-token context. Anything
+    longer makes Ollama 500 instead of truncating. Cap input at
+    EMBED_INPUT_CHAR_CAP characters (~400 tokens) so we never blow past it.
+    """
+    if len(text) > EMBED_INPUT_CHAR_CAP:
+        text = text[:EMBED_INPUT_CHAR_CAP]
     last_err = None
     delay = 1.0
     for i in range(attempts):
