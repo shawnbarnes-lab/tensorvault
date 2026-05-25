@@ -57,11 +57,6 @@ jobs:
             --hidden-import flask \
             --hidden-import flask_cors \
             --hidden-import faiss \
-            --hidden-import sentence_transformers \
-            --hidden-import sentence_transformers.cross_encoder \
-            --hidden-import transformers \
-            --hidden-import sklearn \
-            --hidden-import sklearn.metrics.pairwise \
             --hidden-import pdfplumber \
             --hidden-import docx \
             --hidden-import fpdf \
@@ -70,6 +65,11 @@ jobs:
             --hidden-import fitz \
             --hidden-import faster_whisper \
             --hidden-import ctranslate2 \
+            --exclude-module torch \
+            --exclude-module sentence_transformers \
+            --exclude-module transformers \
+            --exclude-module sklearn \
+            --exclude-module scipy \
             --exclude-module matplotlib \
             --exclude-module notebook \
             backend/service.py

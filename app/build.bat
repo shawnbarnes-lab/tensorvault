@@ -77,27 +77,22 @@ pyinstaller ^
     --hidden-import flask ^
     --hidden-import flask_cors ^
     --hidden-import faiss ^
-    --hidden-import sentence_transformers ^
-    --hidden-import sentence_transformers.cross_encoder ^
-    --hidden-import transformers ^
-    --hidden-import sklearn ^
-    --hidden-import sklearn.metrics.pairwise ^
     --hidden-import pdfplumber ^
     --hidden-import docx ^
     --hidden-import fpdf ^
-    --hidden-import tqdm ^
-    --hidden-import huggingface_hub ^
-    --hidden-import filelock ^
-    --hidden-import packaging ^
     --hidden-import pytesseract ^
     --hidden-import pdf2image ^
     --hidden-import fitz ^
     --hidden-import faster_whisper ^
     --hidden-import ctranslate2 ^
+    --exclude-module torch ^
+    --exclude-module sentence_transformers ^
+    --exclude-module transformers ^
+    --exclude-module sklearn ^
+    --exclude-module scipy ^
     --exclude-module matplotlib ^
     --exclude-module notebook ^
     --exclude-module ipython ^
-    --exclude-module scipy.optimize ^
     --icon assets\icon.ico ^
     backend\service.py
 

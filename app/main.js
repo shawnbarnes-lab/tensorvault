@@ -12,8 +12,11 @@ let backendProcess = null;
 let ollamaProcess = null;
 let isQuitting = false;
 
-// LLM model — Gemma 4 E4B, ~9.6 GB. Pulled by Ollama on first launch.
-const OLLAMA_MODEL = 'gemma4';
+// Models Ollama pulls on first launch. The LLM is the big one (~9.6 GB);
+// the embedding model is small (~670 MB for mxbai-embed-large).
+const OLLAMA_MODEL       = 'gemma4';
+const OLLAMA_EMBED_MODEL = 'mxbai-embed-large';
+const MODELS_TO_PULL     = [OLLAMA_MODEL, OLLAMA_EMBED_MODEL];
 
 // ─── Data directory (user docs only — no Wikipedia in TensorVault) ──────────
 function getUserDataDir() {
@@ -47,38 +50,30 @@ async function waitForOllamaHttp(retries = 20, delayMs = 500) {
   return false;
 }
 
-async function ensureOllamaModel() {
-  if (!await waitForOllamaHttp()) {
-    console.error('[ollama] HTTP API never came up — skipping model check');
-    return false;
-  }
-
-  // Is the model already present?
-  try {
-    const tagsBody = await new Promise((resolve, reject) => {
-      const req = http.get('http://127.0.0.1:11434/api/tags', { timeout: 5000 }, (res) => {
-        let body = '';
-        res.on('data', c => body += c);
-        res.on('end', () => resolve(body));
+async function isModelPresent(name) {
+  return await new Promise((resolve) => {
+    const req = http.get('http://127.0.0.1:11434/api/tags', { timeout: 5000 }, (res) => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => {
+        try {
+          const tags = JSON.parse(body);
+          const base = name.split(':')[0];
+          resolve(Array.isArray(tags.models) && tags.models.some(m => (m.name || '').includes(base)));
+        } catch { resolve(false); }
       });
-      req.on('error', reject);
-      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
     });
-    const tags = JSON.parse(tagsBody);
-    const base = OLLAMA_MODEL.split(':')[0];
-    if (Array.isArray(tags.models) && tags.models.some(m => (m.name || '').includes(base))) {
-      mainWindow?.webContents.send('setup-status', 'AI model ready.');
-      return true;
-    }
-  } catch (e) { /* fall through to pull */ }
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
+}
 
-  // Pull via HTTP API. Each line of the response body is a JSON event with
-  // {status, digest, total, completed} fields — perfect for driving a clean
-  // progress bar without the ANSI escape soup the CLI emits.
-  mainWindow?.webContents.send('setup-status', `Downloading AI model (${OLLAMA_MODEL}).`);
-
+function pullOneModel(name, label) {
+  // POST /api/pull, parse the line-delimited JSON stream, dispatch typed
+  // progress events to the renderer. Returns a Promise that resolves true
+  // on success.
   return new Promise((resolve) => {
-    const payload = JSON.stringify({ name: OLLAMA_MODEL });
+    const payload = JSON.stringify({ name });
     const req = http.request({
       hostname: '127.0.0.1',
       port: 11434,
@@ -94,7 +89,7 @@ async function ensureOllamaModel() {
       res.on('data', (chunk) => {
         buffer += chunk.toString('utf8');
         const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // keep partial last line
+        buffer = lines.pop() || '';
         for (const raw of lines) {
           const line = raw.trim();
           if (!line) continue;
@@ -108,24 +103,25 @@ async function ensureOllamaModel() {
             const pct = Math.min(100, Math.max(0, Math.round((done / total) * 100)));
             if (pct !== lastPct) {
               lastPct = pct;
-              mainWindow?.webContents.send('setup-status', `Downloading AI model (${fmtBytes(done)} / ${fmtBytes(total)})`);
+              mainWindow?.webContents.send('setup-status',
+                `Downloading ${label} (${fmtBytes(done)} / ${fmtBytes(total)})`);
               mainWindow?.webContents.send('setup-progress', {
-                file:       'AI model',
+                file:       label,
                 pct,
                 downloaded: fmtBytes(done),
                 total:      fmtBytes(total),
               });
             }
           } else if (status.includes('verifying')) {
-            mainWindow?.webContents.send('setup-status', 'Verifying download…');
+            mainWindow?.webContents.send('setup-status', `Verifying ${label}…`);
           } else if (status.includes('manifest')) {
-            mainWindow?.webContents.send('setup-status', 'Preparing model…');
+            mainWindow?.webContents.send('setup-status', `Preparing ${label}…`);
           } else if (status === 'success') {
             mainWindow?.webContents.send('setup-progress', {
-              file: 'AI model', pct: 100,
+              file: label, pct: 100,
               downloaded: fmtBytes(done || 1), total: fmtBytes(total || 1),
             });
-            mainWindow?.webContents.send('setup-status', 'AI model ready.');
+            mainWindow?.webContents.send('setup-status', `${label} ready.`);
           }
         }
       });
@@ -133,12 +129,35 @@ async function ensureOllamaModel() {
       res.on('error', () => resolve(false));
     });
     req.on('error', (err) => {
-      console.error('[ollama] pull request error:', err.message);
+      console.error(`[ollama] pull error for ${name}:`, err.message);
       resolve(false);
     });
     req.write(payload);
     req.end();
   });
+}
+
+async function ensureOllamaModel() {
+  // Pull both the LLM and the embedding model on first launch. Both go
+  // through the same clean progress UI.
+  if (!await waitForOllamaHttp()) {
+    console.error('[ollama] HTTP API never came up — skipping model check');
+    return false;
+  }
+
+  const targets = [
+    { name: OLLAMA_MODEL,       label: 'AI model' },
+    { name: OLLAMA_EMBED_MODEL, label: 'Embedding model' },
+  ];
+
+  for (const t of targets) {
+    if (await isModelPresent(t.name)) {
+      mainWindow?.webContents.send('setup-status', `${t.label} ready.`);
+      continue;
+    }
+    await pullOneModel(t.name, t.label);
+  }
+  return true;
 }
 
 function getOllamaExe() {

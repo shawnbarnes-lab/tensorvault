@@ -5,22 +5,21 @@ Private business knowledge assistant. Indexes your documents into a local
 vector store, answers questions grounded in your docs, exports answers as
 PDF or DOCX. Runs entirely on your own machine.
 
-Target hardware: 4+ core CPU, 8 GB RAM (16 GB recommended), NVIDIA GPU
-with 4+ GB VRAM (optional - falls back to CPU), Windows 10/11.
+Architecture (v0.1.0):
+  - LLM        : Gemma 4 via Ollama  (GPU or CPU, whichever Ollama detects)
+  - Embeddings : mxbai-embed-large via Ollama  (same GPU as LLM)
+  - Index      : FAISS in-memory (Flat IP, cosine after L2 normalization)
+  - Storage    : SQLite for document chunks
+  - STT        : faster-whisper (small, auto-detects CUDA via ctranslate2)
+  - Files      : pdfplumber, python-docx for text extraction
+  - Export     : fpdf2 for PDF, python-docx for DOCX
 
-VRAM allocation (adaptive, auto-split by Ollama):
-  >6 GB VRAM:  full Gemma 4 E4B on GPU + Whisper
-  <=6 GB VRAM: partial Gemma 4 E4B on GPU, rest on CPU RAM
-   0 GB VRAM:  fully on CPU RAM (slower but functional)
+Target hardware: 4+ core CPU, 8 GB RAM (16 GB recommended). GPU is optional
+but strongly recommended for usable LLM speed.
 
-RAM allocation (8 GB minimum):
-  OS + Windows .......... 4.0 GB
-  Electron + Python ..... 1.0 GB
-  BGE-large (CPU) ....... 1.3 GB
-  Cross-encoder ......... 0.4 GB
-  User FAISS (in-mem) ... 0.1-0.5 GB (depends on corpus size)
-  ------------------------------------
-  Total ................. ~7 GB  (1 GB headroom on 8 GB systems)
+This service bundles to ~200 MB after PyInstaller compression (no PyTorch,
+no sentence-transformers, no transformers). The full installer including
+Electron + Ollama binary sits well under the 2 GB GitHub release limit.
 """
 
 import os
@@ -47,11 +46,14 @@ from typing import List, Dict, Any, Optional, Tuple, Generator
 
 import numpy as np
 import faiss
-import torch
 import requests as http_requests
 from flask import Flask, request, jsonify, Response, stream_with_context, send_file
 from flask_cors import CORS
-from sentence_transformers import SentenceTransformer, CrossEncoder
+
+# Note: TensorVault uses Ollama for BOTH the LLM and embeddings. We do not
+# bundle PyTorch / sentence-transformers in the .exe (saves ~1 GB of wheels
+# and keeps the installer under the 2 GB GitHub asset cap). Embeddings run
+# on the same GPU Ollama uses for the LLM.
 
 # -- Hardware target ----------------------------------------------------------
 CPU_THREADS = int(os.environ.get('TENSORVAULT_CPU_THREADS', '4'))
@@ -60,7 +62,6 @@ os.environ['MKL_NUM_THREADS']        = str(CPU_THREADS)
 os.environ['OPENBLAS_NUM_THREADS']   = str(CPU_THREADS)
 os.environ['NUMEXPR_NUM_THREADS']    = str(CPU_THREADS)
 faiss.omp_set_num_threads(CPU_THREADS)
-torch.set_num_threads(CPU_THREADS)
 
 # -- Paths --------------------------------------------------------------------
 if getattr(sys, 'frozen', False):
@@ -84,19 +85,21 @@ EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 HOST            = os.environ.get('RAG_HOST', '127.0.0.1')
 PORT            = int(os.environ.get('RAG_PORT', '8712'))
 
-# Embedding + reranker run on CPU to save VRAM for the LLM
-EMBED_MODEL     = os.environ.get('RAG_EMBED_MODEL',  'BAAI/bge-large-en-v1.5')
-RERANK_MODEL    = os.environ.get('RAG_RERANK_MODEL', 'cross-encoder/ms-marco-MiniLM-L-12-v2')
-EMBED_DEVICE    = 'cpu'
-RERANK_DEVICE   = 'cpu'
+# Ollama (LLM + embeddings — both run on whatever device Ollama detects).
+OLLAMA_HOST        = os.environ.get('OLLAMA_HOST',         'http://127.0.0.1:11434')
+OLLAMA_MODEL       = os.environ.get('OLLAMA_MODEL',        'gemma4')
+OLLAMA_EMBED_MODEL = os.environ.get('OLLAMA_EMBED_MODEL',  'mxbai-embed-large')
 
-# Ollama (LLM) - Gemma 4 E4B by default (smaller, lower hardware bar)
-OLLAMA_HOST     = os.environ.get('OLLAMA_HOST',  'http://127.0.0.1:11434')
-OLLAMA_MODEL    = os.environ.get('OLLAMA_MODEL', 'gemma4')
-
-# Whisper STT - small model, GPU if available, ~500MB VRAM
+# Whisper STT — bundled via faster-whisper. Auto-detects CUDA if installed.
 WHISPER_MODEL   = os.environ.get('WHISPER_MODEL',  'small')
-WHISPER_DEVICE  = 'cuda' if torch.cuda.is_available() else 'cpu'
+def _detect_whisper_device():
+    # We dropped torch from the bundle, so detect CUDA via ctranslate2 instead.
+    try:
+        from ctranslate2 import get_supported_compute_types
+        return 'cuda' if 'float16' in get_supported_compute_types('cuda') else 'cpu'
+    except Exception:
+        return 'cpu'
+WHISPER_DEVICE  = _detect_whisper_device()
 WHISPER_COMPUTE = 'float16' if WHISPER_DEVICE == 'cuda' else 'int8'
 
 # Piper TTS - CPU, zero VRAM
@@ -126,8 +129,9 @@ CHUNK_SIZE      = 400
 CHUNK_OVERLAP   = 50
 
 # -- Globals ------------------------------------------------------------------
-model:    Optional[SentenceTransformer] = None
-reranker: Optional[CrossEncoder]       = None
+# Embedding dimension is discovered from the first embedding call (different
+# Ollama embedding models have different dimensions: 384, 768, 1024, ...).
+embed_dim: Optional[int] = None
 
 user_index  = None
 user_db_con = None
@@ -159,49 +163,26 @@ def get_user_con() -> Optional[sqlite3.Connection]:
 
 # -- Startup ------------------------------------------------------------------
 def init():
-    global model, reranker
-
     print('=' * 64)
     print('TensorVault - Private Business Knowledge Assistant')
     print('Requires: 4+ core CPU, 8 GB RAM (16 GB recommended)')
-    print('GPU optional: NVIDIA 4+ GB VRAM accelerates LLM, otherwise CPU')
+    print('GPU optional but recommended (NVIDIA 4+ GB VRAM)')
     print('=' * 64)
-    print(f'  User dir     : {USER_DATA_DIR}')
-    print(f'  CPU threads  : {CPU_THREADS}')
-    print(f'  Embed device : {EMBED_DEVICE}  (preserving VRAM for LLM)')
-    print(f'  Whisper dev  : {WHISPER_DEVICE}')
+    print(f'  User dir       : {USER_DATA_DIR}')
+    print(f'  CPU threads    : {CPU_THREADS}')
+    print(f'  LLM model      : {OLLAMA_MODEL}  (via Ollama)')
+    print(f'  Embedder model : {OLLAMA_EMBED_MODEL}  (via Ollama)')
+    print(f'  Whisper device : {WHISPER_DEVICE}')
     print()
 
     USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Embedding model on CPU - ~1.3 GB RAM
-    print(f'[1/2] Loading embedding model on CPU...')
-    print(f'      {EMBED_MODEL}')
-    model = SentenceTransformer(EMBED_MODEL, device=EMBED_DEVICE)
-    model.max_seq_length = 512
-    print(f'      OK  RAM ~1.3 GB  VRAM 0')
-
-    # Reranker on CPU
-    print(f'\n[2/2] Loading reranker on CPU...')
-    print(f'      {RERANK_MODEL}')
-    reranker = CrossEncoder(RERANK_MODEL, device=RERANK_DEVICE)
-    print(f'      OK  RAM ~0.4 GB  VRAM 0')
-
-    # Load user index if exists
+    # Load user index if exists. We do not load any heavy ML models here —
+    # embeddings happen via Ollama on demand. This keeps backend startup
+    # near-instant.
     _load_user_index()
 
-    print()
-    print('-' * 64)
-    print(f'  VRAM budget:')
-    print(f'    Gemma 4 E4B (via Ollama) ..... auto-split GPU/CPU')
-    print(f'    Whisper Small ................. ~0.5 GB  GPU')
-    print(f'    Embedder + Reranker ........... 0.0 GB  (CPU)')
-    print(f'  RAM budget:')
-    print(f'    BGE embedder .................. ~1.3 GB')
-    print(f'    Reranker ...................... ~0.4 GB')
-    print(f'    User FAISS index .............. depends on corpus')
-    print('-' * 64)
-    print(f'TensorVault ready -> http://{HOST}:{PORT}')
+    print('TensorVault ready -> http://{}:{}'.format(HOST, PORT))
     print('-' * 64)
 
 
@@ -247,16 +228,42 @@ def _save_user_index():
     USER_META.write_text(json.dumps(user_meta, indent=2))
 
 
-# -- Embedding ----------------------------------------------------------------
+# -- Embedding (via Ollama) ---------------------------------------------------
 def embed(texts: List[str]) -> np.ndarray:
-    with torch.no_grad():
-        vecs = model.encode(
-            texts,
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-            batch_size=32,
-        ).astype('float32')
-    return vecs
+    """Embed texts via Ollama's /api/embeddings endpoint.
+
+    Ollama runs the embedding model on whichever device it detected (GPU if
+    available, CPU otherwise). No PyTorch dependency.
+    """
+    global embed_dim
+    if not texts:
+        return np.zeros((0, embed_dim or 1), dtype='float32')
+    vecs = []
+    for text in texts:
+        # /api/embeddings is a single-string endpoint; we loop. For larger
+        # corpora the newer /api/embed accepts batches and is faster.
+        try:
+            r = http_requests.post(
+                f'{OLLAMA_HOST}/api/embeddings',
+                json={'model': OLLAMA_EMBED_MODEL, 'prompt': text},
+                timeout=120,
+            )
+            r.raise_for_status()
+            v = r.json().get('embedding') or []
+        except Exception as e:
+            print(f'[embed] error: {e}')
+            v = []
+        vecs.append(v)
+    if not vecs or not vecs[0]:
+        return np.zeros((0, embed_dim or 1), dtype='float32')
+    arr = np.array(vecs, dtype='float32')
+    # L2-normalize so we can use FAISS inner-product as cosine similarity.
+    norms = np.linalg.norm(arr, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    arr = arr / norms
+    if embed_dim is None:
+        embed_dim = arr.shape[1]
+    return arr
 
 
 # -- Search -------------------------------------------------------------------
@@ -296,14 +303,14 @@ def search_user(qvec: np.ndarray, k: int) -> List[Dict]:
 
 
 def rerank(query: str, hits: List[Dict], top_k: int) -> List[Dict]:
-    if not hits or reranker is None:
-        return hits[:top_k]
-    pairs = [[query, f"{h['title']}: {h['text'][:512]}"] for h in hits]
-    with torch.no_grad():
-        scores = reranker.predict(pairs, batch_size=8)
-    for h, s in zip(hits, scores):
-        h['rerank_score'] = float(s)
-    hits.sort(key=lambda x: x['rerank_score'], reverse=True)
+    """No-op reranker for v0.1.0.
+
+    The previous version used a cross-encoder (sentence-transformers) for
+    second-pass relevance scoring. That dragged in ~1 GB of PyTorch wheels.
+    For v0.1.0 we trust the top-k FAISS scores from a high-quality embedder
+    (mxbai-embed-large or equivalent). A v0.2 enhancement can add LLM-based
+    reranking via Ollama if quality wins out.
+    """
     return hits[:top_k]
 
 
@@ -418,22 +425,23 @@ def start_ollama_if_needed():
         print(f'  Ollama: not found at {ollama_bin}')
 
 
-def ensure_model_pulled():
+def _pull_one_model(name: str):
+    """Pull a single Ollama model, no-op if already present."""
     try:
-        r   = http_requests.get(f'{OLLAMA_HOST}/api/tags', timeout=5)
+        r = http_requests.get(f'{OLLAMA_HOST}/api/tags', timeout=5)
         names = [m.get('name', '') for m in r.json().get('models', [])]
-        base  = OLLAMA_MODEL.split(':')[0]
+        base  = name.split(':')[0]
         if any(base in n for n in names):
-            print(f'  Model {OLLAMA_MODEL}: already present')
+            print(f'  Model {name}: already present')
             return
     except Exception:
         pass
 
-    print(f'  Pulling {OLLAMA_MODEL} (first run only, ~7.5 GB)...')
+    print(f'  Pulling {name} (first run only)...')
     try:
         with http_requests.post(
             f'{OLLAMA_HOST}/api/pull',
-            json={'name': OLLAMA_MODEL},
+            json={'name': name},
             stream=True, timeout=3600,
         ) as r:
             for line in r.iter_lines():
@@ -446,9 +454,15 @@ def ensure_model_pulled():
                 pct    = done / total * 100 if total else 0
                 if 'pulling' in status or 'verifying' in status:
                     print(f'  {status} {pct:.1f}%', end='\r', flush=True)
-        print(f'\n  Model {OLLAMA_MODEL}: ready')
+        print(f'\n  Model {name}: ready')
     except Exception as e:
-        print(f'  WARNING: model pull failed: {e}')
+        print(f'  WARNING: pull failed for {name}: {e}')
+
+
+def ensure_model_pulled():
+    """Pull both the LLM and the embedding model."""
+    _pull_one_model(OLLAMA_MODEL)
+    _pull_one_model(OLLAMA_EMBED_MODEL)
 
 
 # -- Whisper STT --------------------------------------------------------------
@@ -472,22 +486,32 @@ def get_whisper():
 
 # -- LLM prompt builder -------------------------------------------------------
 SYSTEM_PROMPT = (
-    "You are TensorVault, a private business knowledge assistant.\n"
-    "You answer questions using ONLY the documents the user has indexed. "
-    "Always cite which document and which passage you drew an answer from "
-    "using [1], [2], etc. matching the context passages. If the documents "
-    "do not contain the answer, say so plainly and offer what general "
-    "knowledge you can while flagging that no source supports it.\n\n"
-    "COLOR-CODE your response using source tags. Wrap EVERY sentence in "
-    "exactly one of:\n"
-    "  [[u]]text[[/u]] - based on the user's documents (cite with [N])\n"
-    "  [[g]]text[[/g]] - your knowledge filling gaps, connecting ideas, "
-    "or adding context\n"
-    "  [[n]]text[[/n]] - no relevant passages found; answering from your "
-    "training only\n\n"
-    "Ground at least 80% of your answer in context passages when available. "
-    "Be concise, professional, and direct. Never fabricate names, numbers, "
-    "or dates. Every word must be inside a source tag."
+    "You are TensorVault, a private business knowledge assistant. The user "
+    "has indexed their own business documents (contracts, policies, "
+    "playbooks, meeting notes, RFPs, SOPs, internal wikis, sales collateral) "
+    "and is asking you questions about them.\n"
+    "\n"
+    "Core rules:\n"
+    "1. Ground every claim in the indexed documents. Cite each fact with "
+    "[N] matching the numbered context passages above. Lead with the answer.\n"
+    "2. If multiple documents address the same point, cite each and note "
+    "any discrepancies plainly.\n"
+    "3. If the documents do not contain the answer, say so directly. Do not "
+    "guess. You may offer general knowledge but mark it clearly as outside "
+    "the indexed sources.\n"
+    "4. Never invent: dates, dollar amounts, party names, signing dates, "
+    "deadlines, jurisdictions, policy numbers, percentages, or any other "
+    "specific identifier. If it is not in the documents, say so.\n"
+    "\n"
+    "Format the response to the request:\n"
+    "- 'Summarize ...' -> produce a focused summary, not a Q&A.\n"
+    "- 'Compare ...' -> use a clear side-by-side or bulleted structure.\n"
+    "- 'Draft ...' -> produce the requested artifact (email, memo, clause).\n"
+    "- 'List' or 'extract' -> produce a clean list with citations.\n"
+    "- Otherwise -> direct prose, answer first.\n"
+    "\n"
+    "Tone: professional, concise, no filler. Match the formality of the "
+    "indexed documents. No greetings or sign-offs unless drafting one."
 )
 
 
@@ -500,21 +524,21 @@ def build_rag_prompt(question: str, hits: List[Dict]) -> str:
         )
         return (
             f"{SYSTEM_PROMPT}\n\n"
-            f"CONTEXT:\n{ctx}\n\n"
+            f"CONTEXT (numbered passages from the user's indexed documents):\n"
+            f"{ctx}\n\n"
             f"QUESTION: {question}\n\n"
-            f"Answer the question using the context passages above. "
-            f"Use [[u]] for passages drawn from the user's documents, "
-            f"[[g]] for connecting context or general knowledge. "
-            f"Cite passages as [1], [2], etc."
+            f"Answer the question using the context passages above. Cite "
+            f"each fact with [1], [2], etc."
         )
     else:
         return (
             f"{SYSTEM_PROMPT}\n\n"
-            f"CONTEXT: No relevant passages found in the user's indexed documents.\n\n"
+            f"CONTEXT: No relevant passages were found in the user's "
+            f"indexed documents.\n\n"
             f"QUESTION: {question}\n\n"
-            f"No sources matched. Answer from your general knowledge using "
-            f"[[n]] tags throughout. Note briefly that no document sources "
-            f"were found, then answer as best you can."
+            f"State directly that no document sources matched. You may "
+            f"offer general knowledge if it helps, but make clear it is "
+            f"not drawn from the user's documents."
         )
 
 
@@ -652,11 +676,9 @@ def health():
         'version':          '0.1.0',
         'user_docs':        len(user_meta),
         'user_chunks':      user_index.ntotal if user_index else 0,
-        'gpu_available':    torch.cuda.is_available(),
-        'gpu_name':         torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
-        'embed_device':     EMBED_DEVICE,
         'whisper_device':   WHISPER_DEVICE,
-        'model':            OLLAMA_MODEL,
+        'llm_model':        OLLAMA_MODEL,
+        'embed_model':      OLLAMA_EMBED_MODEL,
     })
 
 
