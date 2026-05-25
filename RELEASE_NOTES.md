@@ -29,31 +29,24 @@ Your documents indexed locally, answered by a local LLM, exported as PDF or DOCX
 | OS | Windows 10/11 64-bit | Windows 11 |
 | CPU | 4 cores | 8+ cores |
 | RAM | 8 GB | 16 GB |
-| GPU | None (auto-falls back to compact CPU model) | NVIDIA 12+ GB VRAM for full-quality Gemma 4 |
+| GPU | None (model runs on CPU, slow but works) | NVIDIA 12+ GB VRAM for full on-GPU inference |
 | Disk | 12 GB free | 15 GB free |
 | Internet | **Required on first launch** (see below) | Required on first launch |
 
-**GPU note**: Both the LLM and embeddings run on your GPU via Ollama. On first launch TensorVault detects your VRAM and **automatically picks an LLM that fits**, so you get fast on-GPU inference instead of CPU offload regardless of your card:
+**GPU note**: Both the LLM and embeddings run via Ollama. Ollama **auto-splits the model between GPU VRAM and system RAM** based on what's available — a 6 GB card uses all 6 GB and runs the rest on CPU, a 24 GB card runs the entire model on GPU. Same Gemma 4 model on every machine; no tier juggling, no quality compromise based on hardware. Lower-VRAM machines just see slower inference because some layers run on CPU.
 
-| VRAM | LLM picked | Size | Quality |
-| --- | --- | --- | --- |
-| ≥ 14 GB | Gemma 4 E4B | ~9.6 GB | Full quality |
-| 10-14 GB | Gemma 3 12B | ~8.1 GB | Very close to Gemma 4 |
-| 4-10 GB | Gemma 3 4B | ~3.3 GB | Solid mid-tier |
-| < 4 GB or no NVIDIA | Gemma 3 1B | ~0.8 GB | Compact (CPU fallback if no GPU) |
-
-You can override with `OLLAMA_MODEL=<model>` if you want a specific one. The embedding model (mxbai-embed-large, ~770 MB) is the same on all systems.
+You can override the model with `OLLAMA_MODEL=<name>` env var if you want a different one.
 
 ## First-launch internet requirement
 
 The installer is ~1.7 GB. On first launch, TensorVault downloads two models automatically via Ollama:
 
-| What | Size on disk | Purpose |
+| What | Size | Purpose |
 | --- | --- | --- |
-| LLM (auto-selected per your VRAM) | 0.8-9.6 GB | Generates the AI answers |
+| Gemma 4 (LLM) | ~9.6 GB | Generates the AI answers |
 | mxbai-embed-large (embedder) | ~770 MB | Indexes and searches your documents |
 
-**Total first-launch download: 1.5-10.4 GB** depending on which LLM your machine gets. Takes 5-30 minutes depending on connection speed. After that, the app runs fully offline — no more downloads.
+**Total first-launch download: ~10.3 GB.** Takes 10-30 minutes depending on connection speed. After that, the app runs fully offline — no more downloads.
 
 **Why not bundle the models?** A 10+ GB installer pushes past GitHub's 2 GB single-file release cap and would be a slow one-time download anyway. Modern LLM apps (LM Studio, Jan, etc.) all use this pattern.
 
