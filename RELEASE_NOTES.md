@@ -37,9 +37,10 @@ Your documents indexed locally, answered by a local LLM, exported as PDF or DOCX
 
 | VRAM | LLM picked | Size | Quality |
 | --- | --- | --- | --- |
-| ≥ 12 GB | Gemma 4 E4B | ~9.6 GB | Full quality |
-| 6-12 GB | Gemma 3 4B | ~3.3 GB | Very good |
-| < 6 GB or no NVIDIA | Gemma 3 1B | ~0.8 GB | Compact (CPU fallback if no GPU) |
+| ≥ 14 GB | Gemma 4 E4B | ~9.6 GB | Full quality |
+| 10-14 GB | Gemma 3 12B | ~8.1 GB | Very close to Gemma 4 |
+| 4-10 GB | Gemma 3 4B | ~3.3 GB | Solid mid-tier |
+| < 4 GB or no NVIDIA | Gemma 3 1B | ~0.8 GB | Compact (CPU fallback if no GPU) |
 
 You can override with `OLLAMA_MODEL=<model>` if you want a specific one. The embedding model (mxbai-embed-large, ~770 MB) is the same on all systems.
 

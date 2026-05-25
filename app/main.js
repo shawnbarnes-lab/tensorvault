@@ -13,13 +13,18 @@ let ollamaProcess = null;
 let isQuitting = false;
 
 // ─── GPU detection and model selection ────────────────────────────────────
-// We auto-detect VRAM and pick an LLM that fits alongside the embedder.
-// Power users can override with the OLLAMA_MODEL env var.
+// We auto-detect VRAM and pick the LARGEST LLM that fits cleanly on the
+// GPU alongside the 770 MB embedder. Goal is full-GPU inference, never
+// CPU offload. Power users can override with OLLAMA_MODEL env var.
 //
-// Picks (with mxbai-embed-large always ~770 MB):
-//   >= 12 GB VRAM   -> gemma4      (~9.6 GB, full quality, ~10.4 GB total)
-//    6-12 GB VRAM   -> gemma3:4b   (~3.3 GB, very good, ~4.1 GB total)
-//   <  6 GB or none -> gemma3:1b   (~0.8 GB, basic, ~1.6 GB total)
+//   >= 14 GB VRAM   -> gemma4         (~9.6 GB, full quality)
+//    10-14 GB VRAM  -> gemma3:12b     (~8.1 GB, very close to gemma4)
+//     4-10 GB VRAM  -> gemma3:4b      (~3.3 GB, solid mid-tier)
+//   <  4 GB or none -> gemma3:1b      (~0.8 GB, compact / CPU fallback)
+//
+// gemma3:12b is the sweet spot for 10-12 GB cards (RTX 3080 / 4070 Ti):
+// it fits with the embedder, runs fully on GPU, and quality lands close
+// to gemma4. Way better than dropping all the way to gemma3:4b.
 //
 // We always use mxbai-embed-large for embeddings -- small enough to fit
 // in any reasonable GPU and it's the quality sweet spot at 1024 dims.
@@ -48,9 +53,10 @@ function detectGpuVramGB() {
 }
 
 function selectLlmModel(vramGB) {
-  if (vramGB >= 12) return { name: 'gemma4',    label: 'Gemma 4 E4B',  sizeGB: 9.6, tier: 'high' };
-  if (vramGB >= 6)  return { name: 'gemma3:4b', label: 'Gemma 3 4B',   sizeGB: 3.3, tier: 'mid'  };
-  return                    { name: 'gemma3:1b', label: 'Gemma 3 1B',  sizeGB: 0.8, tier: 'low'  };
+  if (vramGB >= 14) return { name: 'gemma4',     label: 'Gemma 4 E4B', sizeGB: 9.6, tier: 'high'   };
+  if (vramGB >= 10) return { name: 'gemma3:12b', label: 'Gemma 3 12B', sizeGB: 8.1, tier: 'upper'  };
+  if (vramGB >= 4)  return { name: 'gemma3:4b',  label: 'Gemma 3 4B',  sizeGB: 3.3, tier: 'mid'    };
+  return                   { name: 'gemma3:1b',  label: 'Gemma 3 1B',  sizeGB: 0.8, tier: 'low'    };
 }
 
 const DETECTED_VRAM_GB = detectGpuVramGB();
@@ -196,9 +202,11 @@ async function ensureOllamaModel() {
   let selectionMsg;
   if (LLM_OVERRIDE) {
     selectionMsg = `Using ${SELECTED_LLM.label} (set by OLLAMA_MODEL).`;
-  } else if (DETECTED_VRAM_GB >= 12) {
+  } else if (DETECTED_VRAM_GB >= 14) {
     selectionMsg = `Detected ${DETECTED_VRAM_GB} GB GPU — using ${SELECTED_LLM.label} for full quality.`;
-  } else if (DETECTED_VRAM_GB >= 6) {
+  } else if (DETECTED_VRAM_GB >= 10) {
+    selectionMsg = `Detected ${DETECTED_VRAM_GB} GB GPU — using ${SELECTED_LLM.label} (very close to Gemma 4, fits fully on GPU).`;
+  } else if (DETECTED_VRAM_GB >= 4) {
     selectionMsg = `Detected ${DETECTED_VRAM_GB} GB GPU — using ${SELECTED_LLM.label} to keep inference on GPU.`;
   } else if (DETECTED_VRAM_GB > 0) {
     selectionMsg = `Detected ${DETECTED_VRAM_GB} GB GPU — using ${SELECTED_LLM.label} (compact model for low-VRAM cards).`;
