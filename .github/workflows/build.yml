@@ -104,8 +104,24 @@ jobs:
       # Azure Trusted Signing is OPTIONAL. If the secrets below are configured
       # in the repo settings, the installer gets EV-class signing automatically.
       # Without them, the installer ships unsigned (SmartScreen will prompt).
+      # We surface the secret presence through an env var so step-level `if:`
+      # expressions can read it (secrets context is not directly available in
+      # step-level conditionals).
+      - name: Check for signing secrets
+        id: check_signing
+        shell: bash
+        env:
+          AZ_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        run: |
+          if [ -n "$AZ_CLIENT_ID" ]; then
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+            echo "::notice::Azure Trusted Signing secrets not configured — installer will ship unsigned."
+          fi
+
       - name: Azure login (OIDC)
-        if: ${{ secrets.AZURE_CLIENT_ID != '' }}
+        if: steps.check_signing.outputs.available == 'true'
         uses: azure/login@v2
         with:
           client-id:       ${{ secrets.AZURE_CLIENT_ID }}
@@ -113,7 +129,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Sign installer (Azure Trusted Signing)
-        if: ${{ secrets.AZURE_CLIENT_ID != '' }}
+        if: steps.check_signing.outputs.available == 'true'
         shell: pwsh
         working-directory: app
         run: |
