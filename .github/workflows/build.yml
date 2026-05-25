@@ -153,31 +153,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: app/dist/TensorVault-Setup-*.exe
-          body: |
-            ## TensorVault ${{ github.ref_name }}
-
-            Private business knowledge assistant. Index your documents into a
-            local vector store, ask questions answered by a local LLM, export
-            answers as PDF or DOCX. Runs entirely on your own machine.
-
-            ### What's bundled
-            - Local LLM: Gemma 3n E4B (~7.5 GB) via Ollama
-            - BGE-large embeddings + MiniLM cross-encoder reranker
-            - Whisper STT, Piper TTS, Tesseract OCR, Poppler
-
-            ### System Requirements
-            - Windows 10/11 64-bit
-            - 8 GB RAM (16 GB recommended)
-            - NVIDIA GPU with 4+ GB VRAM (optional - falls back to CPU)
-            - ~10 GB free disk space
-
-            ### Installation
-            1. Download `TensorVault-Setup-${{ github.ref_name }}.exe`
-            2. Run the installer (one click, everything bundled)
-            3. Launch TensorVault from the Start Menu
-            4. Add your documents in the "My Docs" tab
-
-            Released under the MIT license by TensorSpace LLC.
-            Website: https://tensorspace.net
+          body_path: RELEASE_NOTES.md
           draft: false
           prerelease: false
