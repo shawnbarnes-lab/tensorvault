@@ -149,7 +149,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: app/dist/TensorVault-Setup-*.exe
+          files: |
+            app/dist/TensorVault-Setup-*.exe
+            README.md
+            LICENSE
           body_path: RELEASE_NOTES.md
           draft: false
           prerelease: false

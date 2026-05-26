@@ -24,27 +24,30 @@ Cloud AI services see everything you type. For most businesses that is a real pr
 
 TensorVault is an alternative for teams who want the practical value of a RAG-powered assistant without the privacy and cost tradeoffs. You run it on your own laptop. Your documents never leave the machine.
 
-## Features
+## Features (v0.1.0)
 
-- **Document indexing**: PDF, DOCX, TXT, MD, CSV, RTF. OCR for scanned PDFs.
-- **Semantic search** over your indexed documents using BGE-large embeddings (1024-dim) plus a MiniLM cross-encoder reranker.
-- **Grounded AI answers** powered by a local LLM (Gemma 4 E4B by default). Every claim cites the document and passage it came from.
-- **Color-coded responses** show which sentences came from your documents, which came from the model's general knowledge, and which had no source backing them.
-- **Voice input and output**: Whisper for speech-to-text, Piper for text-to-speech.
+- **Document indexing**: PDF, DOCX, TXT, MD, CSV, RTF (clean text PDFs; OCR for scanned PDFs is on the v0.2 roadmap).
+- **Semantic search** with GPU-accelerated embeddings (mxbai-embed-large, 1024-dim, served via Ollama).
+- **Grounded AI answers** powered by a local LLM (Gemma 4 via Ollama). Every claim cites the document and passage it came from.
+- **Business-tuned system prompt**: handles lookup, summarize, compare, draft, and extract patterns.
+- **Voice input** via Whisper STT (auto-detects CUDA).
 - **PDF and DOCX export**: turn any AI answer into a polished, citation-ready report.
-- **Fully offline**: no internet needed after install. No telemetry. No accounts.
+- **Fully offline after first launch.** No telemetry. No accounts. No cloud calls.
 
 ## System Requirements
 
-| Component | Minimum            | Recommended       |
-| --------- | ------------------ | ----------------- |
-| OS        | Windows 10/11 64-bit | Windows 11        |
-| CPU       | 4 cores            | 8+ cores          |
-| RAM       | 8 GB               | 16 GB             |
-| GPU       | None (CPU fallback) | NVIDIA 4+ GB VRAM |
-| Disk      | 10 GB free          | 15 GB free        |
+| Component | **Minimum (works, slower)** | **Recommended (smooth)** | **Optimal** |
+| --- | --- | --- | --- |
+| OS | Windows 10/11 64-bit | Windows 11 64-bit | Windows 11 |
+| CPU | 8 cores | 8+ cores | 12+ cores |
+| RAM | 16 GB | 32 GB | 32+ GB |
+| GPU | NVIDIA 8 GB VRAM | **NVIDIA 12 GB VRAM** (RTX 3060 12GB+) | NVIDIA 16+ GB VRAM (RTX 4080 / 4090) |
+| Disk | 15 GB free SSD | 25 GB free SSD | 50 GB free SSD |
+| Internet | Required on first launch (~10 GB model download) | same | same |
 
-The installer bundles the LLM, so the first launch does not require an internet download.
+**About the GPU requirement:** TensorVault uses Ollama for both the LLM and embeddings. Ollama automatically splits the model between GPU VRAM and system RAM based on what is available — a 6 GB card will work but will offload heavily to CPU, making inference 5-10x slower. **12 GB VRAM is the sweet spot** for fully-on-GPU performance at this model size.
+
+**First launch downloads ~10 GB:** Gemma 4 LLM (~9.6 GB) and mxbai-embed-large embedder (~770 MB) are pulled by Ollama on first run. After that, the app runs fully offline.
 
 ## Install
 
@@ -130,19 +133,18 @@ The signed installer release on GitHub is built and signed automatically via [Gi
 ## Technical stack
 
 | Layer | Stack |
-| ----- | ----- |
+| --- | --- |
 | UI | Electron 28 + custom HTML/CSS |
-| LLM | Gemma 4 E4B via Ollama |
-| Embeddings | BAAI/bge-large-en-v1.5 (CPU) |
-| Reranker | cross-encoder/ms-marco-MiniLM-L-12-v2 (CPU) |
-| Vector store | FAISS (in-memory flat IP) |
+| LLM | Gemma 4 via Ollama (GPU when available) |
+| Embeddings | mxbai-embed-large via Ollama (1024-dim, GPU) |
+| Vector store | FAISS in-memory (Flat IP, cosine via L2 normalization) |
 | Text store | SQLite (WAL mode) |
-| STT | faster-whisper (small) |
-| TTS | Piper |
-| OCR | Tesseract + Poppler |
+| STT | faster-whisper (small) — bundled, auto-detects CUDA |
 | Backend | Flask (frozen to .exe via PyInstaller) |
 | Installer | NSIS via electron-builder |
-| Signing | Azure Trusted Signing |
+| Signing | Azure Trusted Signing (optional — falls back to unsigned) |
+
+**On the v0.2 roadmap:** OCR for scanned PDFs (Tesseract bundling), Piper TTS for voice output, cross-encoder reranker, XLSX / email file support, multi-user / shared corpus.
 
 ## License
 

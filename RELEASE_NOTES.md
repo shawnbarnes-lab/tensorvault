@@ -22,18 +22,22 @@ Your documents indexed locally, answered by a local LLM, exported as PDF or DOCX
 - **Natural-language "create a docx with X" command** — for v0.1.0 you click the Export buttons manually after an AI answer
 - **Reranker** (the previous cross-encoder was dropped to stay under GitHub's 2 GB asset cap; v0.2 may add LLM-based reranking via Ollama)
 
-## System Requirements
+## System Requirements (READ BEFORE DOWNLOADING)
 
-| Component | Minimum | Recommended |
-| --- | --- | --- |
-| OS | Windows 10/11 64-bit | Windows 11 |
-| CPU | 4 cores | 8+ cores |
-| RAM | 8 GB | 16 GB |
-| GPU | None (model runs on CPU, slow but works) | NVIDIA 12+ GB VRAM for full on-GPU inference |
-| Disk | 12 GB free | 15 GB free |
-| Internet | **Required on first launch** (see below) | Required on first launch |
+| Component | **Minimum (works, slower)** | **Recommended (smooth)** | **Optimal** |
+| --- | --- | --- | --- |
+| OS | Windows 10/11 64-bit | Windows 11 64-bit | Windows 11 |
+| CPU | 8 cores | 8+ cores | 12+ cores |
+| RAM | 16 GB | 32 GB | 32+ GB |
+| GPU | NVIDIA 8 GB VRAM | **NVIDIA 12 GB VRAM** (RTX 3060 12GB+) | NVIDIA 16+ GB VRAM (RTX 4080 / 4090) |
+| Disk | 15 GB free SSD | 25 GB free SSD | 50 GB free SSD |
+| Internet | Required on first launch (~10 GB model download) | same | same |
 
-**GPU note**: Both the LLM and embeddings run via Ollama. Ollama **auto-splits the model between GPU VRAM and system RAM** based on what's available — a 6 GB card uses all 6 GB and runs the rest on CPU, a 24 GB card runs the entire model on GPU. Same Gemma 4 model on every machine; no tier juggling, no quality compromise based on hardware. Lower-VRAM machines just see slower inference because some layers run on CPU.
+**About the GPU requirement.** TensorVault uses Ollama for both the LLM and embeddings. Ollama automatically splits the model between GPU VRAM and system RAM based on what is available — a 6 GB card will work, but will offload most of the LLM to CPU, making inference 5-10x slower. **12 GB VRAM is the sweet spot** for fully-on-GPU performance with Gemma 4.
+
+**No NVIDIA GPU?** The app will run on CPU but at ~1-5 tokens/sec — fine for occasional queries, not practical for daily work. We're considering smaller-model defaults for CPU-only machines in v0.2.
+
+The README is attached to this release as a separate file for reference.
 
 You can override the model with `OLLAMA_MODEL=<name>` env var if you want a different one.
 
