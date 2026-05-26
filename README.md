@@ -36,18 +36,18 @@ TensorVault is an alternative for teams who want the practical value of a RAG-po
 
 ## System Requirements
 
-| Component | **Minimum (works, slower)** | **Recommended (smooth)** | **Optimal** |
-| --- | --- | --- | --- |
-| OS | Windows 10/11 64-bit | Windows 11 64-bit | Windows 11 |
-| CPU | 8 cores | 8+ cores | 12+ cores |
-| RAM | 16 GB | 32 GB | 32+ GB |
-| GPU | NVIDIA 8 GB VRAM | **NVIDIA 12 GB VRAM** (RTX 3060 12GB+) | NVIDIA 16+ GB VRAM (RTX 4080 / 4090) |
-| Disk | 15 GB free SSD | 25 GB free SSD | 50 GB free SSD |
-| Internet | Required on first launch (~10 GB model download) | same | same |
+| Component | Minimum | Recommended |
+| --- | --- | --- |
+| OS | Windows 10/11 64-bit | Windows 11 64-bit |
+| CPU | 4 cores | 8+ cores |
+| RAM | 8 GB | 16 GB |
+| GPU | NVIDIA 4 GB VRAM | NVIDIA 12 GB VRAM (RTX 3060 12GB+) |
+| Disk | 15 GB free SSD | 25 GB free SSD |
+| Internet | Required on first launch (~10 GB model download) | same |
 
-**About the GPU requirement:** TensorVault uses Ollama for both the LLM and embeddings. Ollama automatically splits the model between GPU VRAM and system RAM based on what is available — a 6 GB card will work but will offload heavily to CPU, making inference 5-10x slower. **12 GB VRAM is the sweet spot** for fully-on-GPU performance at this model size.
+**Asymmetric GPU/RAM fallback (the perk).** TensorVault uses Ollama for both the LLM and embeddings. Ollama automatically splits the model between GPU VRAM and system RAM based on what is available — a 4 GB card uses all 4 GB and runs the rest on CPU. **The same Gemma 4 model runs on every machine.** Smaller GPUs just see slower inference because layers offload to CPU.
 
-**First launch downloads ~10 GB:** Gemma 4 LLM (~9.6 GB) and mxbai-embed-large embedder (~770 MB) are pulled by Ollama on first run. After that, the app runs fully offline.
+**First launch downloads ~10 GB:** Gemma 4 (~9.6 GB) and mxbai-embed-large embedder (~770 MB) are pulled by Ollama. After that, the app runs fully offline.
 
 ## Install
 
